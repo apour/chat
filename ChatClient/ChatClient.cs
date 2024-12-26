@@ -5,11 +5,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 class Program
 {
     static object _sendLock = new object();
     static bool _serverRunning = false;
+    const int _BUF_SIZE = 16;
 
     static (TcpClient client, NetworkStream stream) TryConnectToServer(IPAddress ipAddress, int port)
     {
@@ -100,21 +102,23 @@ class Program
             _serverRunning = false;
     }
 
-    private static string ReadLine(NetworkStream stream)
+    private static async Task<string> ReadLineAsync(NetworkStream stream)
     {
         stream.ReadTimeout = 100;
         List<byte> bytes = new List<byte>();
         try
-        {
-            int curByte = -1;
+        {            
+            byte[] buffer = new byte[_BUF_SIZE];
+            var cancellationToken = new CancellationToken();
             while (stream.DataAvailable)
             {
-                curByte = stream.ReadByte();
-                if (curByte == -1)
+                var readBytes = await stream.ReadAsync(buffer, cancellationToken);
+                if (readBytes == 0)
                     break;
-                if (curByte == '\r')
-                    break;
-                bytes.Add( (byte) curByte);
+                for (int i=0; i<readBytes; i++)
+                {
+                    bytes.Add( (byte) buffer[i]);
+                }                
             }
         }
         catch (IOException)
@@ -129,13 +133,14 @@ class Program
     }
 
     
-    public static void receiveListener(object o)
+    public static async void receiveListener(object o)
     {
         NetworkStream ns = (NetworkStream)o;
         ns.ReadTimeout = 100;
         while (_serverRunning)
         {
-            string response = ReadLine(ns);
+            await Task.Delay(500);
+            string response = await ReadLineAsync(ns);
             if (response == string.Empty)
             {
                 continue;
